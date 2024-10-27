@@ -5,24 +5,38 @@ from io import BytesIO
 from docx import Document
 import docx.shared
 import datetime
+import requests  # New import for fetching images from URLs
+
+# Function to download image from a URL
+def fetch_image_from_url(url):
+    response = requests.get(url)
+    if response.status_code == 200:
+        return BytesIO(response.content)
+    else:
+        st.error("Failed to fetch the logo from the URL.")
+        return None
 
 # Function to generate and return a Word document with multiple graphs and logo
-def generate_report_with_logo(data, client_name, logo_path):
+def generate_report_with_logo(data, client_name, logo_url):
     doc = Document()
-    
+
     # Ensure date is in datetime format and extract month
     data['Date OF Purchase'] = pd.to_datetime(data['Date OF Purchase'], format="%d/%m/%Y")
     data['Month'] = data['Date OF Purchase'].dt.to_period('M')
     data['eBay Price'] = data['eBay Price'].astype(float)
     data['Ali Express Price'] = data['Ali Express Price'].astype(float)
 
+    # Fetch the logo image from the URL
+    logo_image = fetch_image_from_url(logo_url)
+
     # Add logo to every page's header
-    section = doc.sections[0]
-    header = section.header
-    header_paragraph = header.paragraphs[0]
-    header_paragraph.alignment = 1  # Center alignment
-    run = header_paragraph.add_run()
-    run.add_picture(logo_path, width=docx.shared.Inches(2.0))  # Adjust logo size as needed
+    if logo_image:
+        section = doc.sections[0]
+        header = section.header
+        header_paragraph = header.paragraphs[0]
+        header_paragraph.alignment = 1  # Center alignment
+        run = header_paragraph.add_run()
+        run.add_picture(logo_image, width=docx.shared.Inches(2.0))  # Adjust logo size as needed
 
     # Calculating total metrics
     total_sales = data['eBay Price'].sum()
@@ -101,7 +115,7 @@ def generate_report_with_logo(data, client_name, logo_path):
         img_stream = BytesIO()
         fig.savefig(img_stream, format='png')
         img_stream.seek(0)
-        
+
         # Add to Word document with titles
         doc.add_paragraph(f'Graph {i+1}:')
         doc.add_picture(img_stream)
@@ -110,7 +124,7 @@ def generate_report_with_logo(data, client_name, logo_path):
     buffer = BytesIO()
     doc.save(buffer)
     buffer.seek(0)
-    
+
     return buffer
 
 # Streamlit app
@@ -123,17 +137,17 @@ uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
 if uploaded_file:
     # Read the CSV into a DataFrame
     data = pd.read_csv(uploaded_file)
-    
+
     # Ask the user for their name
     client_name = st.text_input("Enter the client's name", value="Client")
-    
-    # Provide the path to the logo
-    logo_path = "/Users/benda/Desktop/BendaLTD/Logos/BENDA - logo black.png"  # Make sure the logo file is in the same directory
-    
+
+    # URL of the logo
+    logo_url = "https://i.postimg.cc/kgvhv1Mn/BENDA-logo-black.png"
+
     if st.button("Generate Report"):
-        # Generate the report as a Word document with the logo
-        report_buffer = generate_report_with_logo(data, client_name, logo_path)
-        
+        # Generate the report as a Word document with the logo from the URL
+        report_buffer = generate_report_with_logo(data, client_name, logo_url)
+
         # Download link for the report
         st.download_button(
             label="Download Report",
