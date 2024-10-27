@@ -5,7 +5,7 @@ from io import BytesIO
 from docx import Document
 import docx.shared
 import datetime
-import requests  # New import for fetching images from URLs
+import requests
 
 # Function to download image from a URL
 def fetch_image_from_url(url):
@@ -23,8 +23,10 @@ def generate_report_with_logo(data, client_name, logo_url):
     # Ensure date is in datetime format and extract month
     data['Date OF Purchase'] = pd.to_datetime(data['Date OF Purchase'], format="%d/%m/%Y")
     data['Month'] = data['Date OF Purchase'].dt.to_period('M')
-    data['eBay Price'] = data['eBay Price'].astype(float)
-    data['Ali Express Price'] = data['Ali Express Price'].astype(float)
+
+    # Extract and calculate profit from percentage
+    data['Profit Percentage'] = data['Profit Per Sale'].str.replace('%', '').astype(float)
+    data['Profit Amount'] = (data['eBay Price'] - data['Ali Express Price']) * (data['Profit Percentage'] / 100)
 
     # Fetch the logo image from the URL
     logo_image = fetch_image_from_url(logo_url)
@@ -36,11 +38,11 @@ def generate_report_with_logo(data, client_name, logo_url):
         header_paragraph = header.paragraphs[0]
         header_paragraph.alignment = 1  # Center alignment
         run = header_paragraph.add_run()
-        run.add_picture(logo_image, width=docx.shared.Inches(2.0))  # Adjust logo size as needed
+        run.add_picture(logo_image, width=docx.shared.Inches(2.0))  # Adjust logo size
 
     # Calculating total metrics
     total_sales = data['eBay Price'].sum()
-    total_profit_per_sale = data['Profit Per Sale'].str.extract(r'(\d+.\d+)').dropna()[0].astype(float).sum()
+    total_profit_per_sale = data['Profit Amount'].sum()
 
     # Create graphs
     fig_list = []
@@ -66,9 +68,7 @@ def generate_report_with_logo(data, client_name, logo_url):
     fig_list.append(fig2)
 
     # Plot 3: Sum of Profit per Month
-    monthly_profit_sum = data['Profit Per Sale'].str.extract(r'(\d+.\d+)').astype(float)
-    monthly_profit_sum['Month'] = data['Month']
-    monthly_profit_sum = monthly_profit_sum.groupby('Month')[0].sum()
+    monthly_profit_sum = data.groupby('Month')['Profit Amount'].sum()
     fig3, ax3 = plt.subplots()
     ax3.bar(monthly_profit_sum.index.astype(str), monthly_profit_sum, color="green")
     ax3.set_title("Sum of Profit per Month")
@@ -79,7 +79,7 @@ def generate_report_with_logo(data, client_name, logo_url):
 
     # Plot 4: Profit Per Sale Over Time
     fig4, ax4 = plt.subplots()
-    ax4.plot(data['Date OF Purchase'], data['Profit Per Sale'].str.extract(r'(\d+.\d+)').astype(float), color="orange")
+    ax4.plot(data['Date OF Purchase'], data['Profit Amount'], color="orange")
     ax4.set_title("Profit Per Sale Over Time")
     ax4.set_xlabel("Date of Purchase")
     ax4.set_ylabel("Profit Per Sale ($)")
