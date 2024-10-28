@@ -5,9 +5,9 @@ from io import BytesIO
 from docx import Document
 import docx.shared
 import datetime
-import requests  # Import for fetching image from URL
+import requests  # For fetching the logo from a URL
 
-# Function to fetch image from a URL
+# Function to fetch the logo from a URL
 def fetch_image_from_url(url):
     response = requests.get(url)
     if response.status_code == 200:
@@ -16,18 +16,28 @@ def fetch_image_from_url(url):
         st.error("Failed to fetch the logo from the provided URL.")
         return None
 
-# Function to generate and return a Word document with multiple graphs and logo
+# Function to generate the Word document with graphs and a logo
 def generate_report_with_logo(data, client_name, logo_url):
     doc = Document()
 
-    # Ensure date is in datetime format and extract month
+    # Ensure date is in datetime format and extract the month
     data['Date OF Purchase'] = pd.to_datetime(data['Date OF Purchase'], format="%d/%m/%Y")
     data['Month'] = data['Date OF Purchase'].dt.to_period('M')
+
+    # Clean and convert 'Profit Per Sale' to float, handling errors gracefully
+    data['Profit Per Sale Cleaned'] = pd.to_numeric(
+        data['Profit Per Sale'].str.replace('[\$,]', '', regex=True),
+        errors='coerce'
+    ).fillna(0)
+
+    # Calculate total metrics
+    total_sales = data['eBay Price'].sum()
+    total_profit_per_sale = data['Profit Per Sale Cleaned'].sum()
 
     # Fetch the logo from the URL
     logo_image = fetch_image_from_url(logo_url)
 
-    # Add logo to every page's header
+    # Add the logo to the header of every page
     if logo_image:
         section = doc.sections[0]
         header = section.header
@@ -36,11 +46,7 @@ def generate_report_with_logo(data, client_name, logo_url):
         run = header_paragraph.add_run()
         run.add_picture(logo_image, width=docx.shared.Inches(2.0))
 
-    # Calculating total metrics
-    total_sales = data['eBay Price'].sum()
-    total_profit_per_sale = data['Profit Per Sale'].str.replace('[\$,]', '', regex=True).astype(float).sum()
-
-    # Create graphs
+    # Create and append graphs
     fig_list = []
 
     # Plot 1: Number of Sales per Month
@@ -64,9 +70,7 @@ def generate_report_with_logo(data, client_name, logo_url):
     fig_list.append(fig2)
 
     # Plot 3: Sum of Profit per Month
-    monthly_profit_sum = data.groupby('Month')['Profit Per Sale'].apply(
-        lambda x: x.str.replace('[\$,]', '', regex=True).astype(float).sum()
-    )
+    monthly_profit_sum = data.groupby('Month')['Profit Per Sale Cleaned'].sum()
     fig3, ax3 = plt.subplots()
     ax3.bar(monthly_profit_sum.index.astype(str), monthly_profit_sum, color="green")
     ax3.set_title("Sum of Profit per Month")
@@ -77,8 +81,7 @@ def generate_report_with_logo(data, client_name, logo_url):
 
     # Plot 4: Profit Per Sale Over Time
     fig4, ax4 = plt.subplots()
-    profit_over_time = data['Profit Per Sale'].str.replace('[\$,]', '', regex=True).astype(float)
-    ax4.plot(data['Date OF Purchase'], profit_over_time, color="orange")
+    ax4.plot(data['Date OF Purchase'], data['Profit Per Sale Cleaned'], color="orange")
     ax4.set_title("Profit Per Sale Over Time")
     ax4.set_xlabel("Date of Purchase")
     ax4.set_ylabel("Profit Per Sale ($)")
@@ -115,7 +118,7 @@ def generate_report_with_logo(data, client_name, logo_url):
         fig.savefig(img_stream, format='png')
         img_stream.seek(0)
         
-        # Add to Word document with titles
+        # Add the graph to the document
         doc.add_paragraph(f'Graph {i+1}:')
         doc.add_picture(img_stream)
 
@@ -126,28 +129,28 @@ def generate_report_with_logo(data, client_name, logo_url):
     
     return buffer
 
-# Streamlit app
+# Streamlit app setup
 st.title('Investment Report Generator')
 
-st.write("Upload a CSV file with your sales data, and get a Word document with analysis and graphs including your logo.")
+st.write("Upload a CSV file with your sales data and get a Word document with analysis and graphs, including your logo.")
 
 uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
 
 if uploaded_file:
-    # Read the CSV into a DataFrame
+    # Read the CSV data
     data = pd.read_csv(uploaded_file)
     
-    # Ask the user for their name
+    # Input for client's name
     client_name = st.text_input("Enter the client's name", value="Client")
     
-    # Provide the URL of the logo
+    # Input for the logo URL
     logo_url = st.text_input("Enter the URL of your logo", value="https://i.postimg.cc/kgvhv1Mn/BENDA-logo-black.png")
     
     if st.button("Generate Report"):
-        # Generate the report as a Word document with the logo from the URL
+        # Generate the report with the provided data and logo URL
         report_buffer = generate_report_with_logo(data, client_name, logo_url)
         
-        # Download link for the report
+        # Provide a download link for the report
         st.download_button(
             label="Download Report",
             data=report_buffer,
